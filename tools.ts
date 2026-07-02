@@ -1,6 +1,7 @@
 import { tool } from 'ai';
 import { z } from 'zod';
 import ms from 'ms';
+import { LinearClient } from '@linear/sdk';
 
 function normalizeDuration(timeStr: string): string {
     const clean = timeStr.toLowerCase().trim();
@@ -19,6 +20,72 @@ function normalizeDuration(timeStr: string): string {
     return timeStr;
 }
 
+function parseTimestamp(val: string | undefined, defaultMs: number): number {
+    if (!val) return defaultMs;
+
+    const clean = val.trim();
+
+    // 1. Try to parse as relative duration (e.g. "past 2 hours", "15m", "3h")
+    try {
+        const normalized = normalizeDuration(clean);
+        const msVal = ms(normalized);
+        if (typeof msVal === 'number') {
+            return Date.now() - msVal;
+        }
+    } catch {
+        // Fall through
+    }
+
+    // 2. Check if it's a raw Unix timestamp (unix ms or ns)
+    if (/^\d+$/.test(clean)) {
+        const num = Number(clean);
+        return num > 1e12 ? Math.floor(num / 1000000) : num;
+    }
+
+    // 3. Parse as ISO-8601 string
+    const parsed = Date.parse(clean);
+    return isNaN(parsed) ? defaultMs : parsed;
+}
+
+export const post_issue_comment = tool({
+    description: 'Post a comment on a Linear issue to update users or publish diagnostics.',
+    parameters: z.object({
+        issue_id: z.string().describe('The ID of the Linear issue to comment on.'),
+        comment_body: z.string().describe('The markdown content of the comment to post.'),
+    }),
+    execute: async ({ issue_id, comment_body }) => {
+        console.log(`[Tool: post_issue_comment] Executing on issue [${issue_id}]`);
+        console.log(`[Tool: post_issue_comment] Body snippet: "${comment_body.substring(0, 150)}..."`);
+        
+        const apiKey = process.env.LINEAR_API_KEY?.trim();
+        if (!apiKey) {
+            console.error("[Tool: post_issue_comment] Error: LINEAR_API_KEY env is not configured.");
+            return { error: "LINEAR_API_KEY environment variable is not configured." };
+        }
+
+        try {
+            const linear = new LinearClient({ apiKey });
+            const agentHeader = `### 🤖 DevOps Agent\n*Automated response*\n\n`;
+            
+            const payload = await linear.createComment({
+                issueId: issue_id,
+                body: agentHeader + comment_body
+            });
+            const comment = await payload.comment;
+
+            console.log(`[Tool: post_issue_comment] Success. Created comment ID: [${comment?.id}]`);
+            return {
+                status: "success",
+                commentId: comment?.id
+            };
+
+        } catch (error: any) {
+            console.error(`[Tool: post_issue_comment] SDK Mutation Failed:`, error);
+            return { error: `Failed to post comment via Linear SDK: ${error.message}` };
+        }
+    }
+});
+
 export const list_services = tool({
     description: 'Retrieve the list of active services/applications in the production infrastructure.',
     parameters: z.object({
@@ -26,8 +93,7 @@ export const list_services = tool({
         end: z.string().optional().describe('The end time to query active services. Defaults to "0m" (now).'),
     }),
     execute: async (args: any) => {
-        const { start, end } = args;
-        console.log(`🤖 Agent executing list_services...`, args);
+        console.log(`[Tool: list_services] Executing with args:`, args);
         const username = process.env.GRAFANA_USER_ID!.trim();
         const tokenSecret = process.env.GRAFANA_API_KEY!.trim();
         const basicAuthString = Buffer.from(`${username}:${tokenSecret}`).toString('base64');
@@ -35,15 +101,9 @@ export const list_services = tool({
         const label = 'service_name';
         let services: string[] = [];
 
-        // Parse start and end relative durations using the ms library with normalizeDuration fallback
-        const startDuration = start || args.time_range || args.duration || '24h';
-        const endDuration = end || '0m';
-
-        const normalizedStart = normalizeDuration(startDuration);
-        const normalizedEnd = normalizeDuration(endDuration);
-
-        const startMs = Date.now() - (ms(normalizedStart) || 24 * 60 * 60 * 1000);
-        const endMs = Date.now() - (ms(normalizedEnd) || 0);
+        // Parse start and end times using the unified helper
+        const startMs = parseTimestamp(args.start || args.time_range || args.duration, Date.now() - 24 * 60 * 60 * 1000);
+        const endMs = parseTimestamp(args.end, Date.now());
 
         // Apply a safety clock skew offset (10 minutes) to keep queries in the server's past
         const skewOffsetMs = 10 * 60 * 1000;
@@ -52,6 +112,9 @@ export const list_services = tool({
 
         const queryBaseUrl = process.env.GRAFANA_LOKI_PUSH_URL!.replace('/push', `/label/${label}/values`);
         const targetUrl = `${queryBaseUrl}?start=${finalStartNs}&end=${finalEndNs}`;
+
+        console.log(`[Tool: list_services] Query Window: ${new Date(startMs).toISOString()} to ${new Date(endMs).toISOString()}`);
+        console.log(`[Tool: list_services] Query URL: ${targetUrl}`);
 
         try {
             const response = await fetch(targetUrl, {
@@ -62,17 +125,23 @@ export const list_services = tool({
                 }
             });
 
+            console.log(`[Tool: list_services] Loki API Response status: ${response.status}`);
+
             if (response.ok) {
                 const json = await response.json();
-                console.log("DEBUG: list_services json response:", json);
+                console.log("[Tool: list_services] Loki raw response:", JSON.stringify(json));
                 if (json.data && json.data.length > 0) {
                     services = json.data;
                 }
+            } else {
+                const errText = await response.text();
+                console.error(`[Tool: list_services] Loki API Error:`, errText);
             }
         } catch (error) {
-            console.error("Failed to fetch label values:", error);
+            console.error("[Tool: list_services] Network failure:", error);
         }
 
+        console.log(`[Tool: list_services] Completed. Found active services:`, services);
         return {
             status: "success",
             services
@@ -91,7 +160,8 @@ export const get_logs = tool({
     }),
     execute: async (args: any) => {
         const { service, filter, limit, start, end } = args;
-        console.log("DEBUG: Raw execute args received from model:", args);
+        console.log("[Tool: get_logs] Executing with args:", args);
+        
         const username = process.env.GRAFANA_USER_ID!.trim();
         const tokenSecret = process.env.GRAFANA_API_KEY!.trim();
         const basicAuthString = Buffer.from(`${username}:${tokenSecret}`).toString('base64');
@@ -116,15 +186,9 @@ export const get_logs = tool({
                 .replace(/,service=/g, ',service_name=');
         }
 
-        // Parse start and end relative durations using the ms library with normalizeDuration fallback
-        const startDuration = start || args.time_range || args.duration || '15m';
-        const endDuration = end || '0m';
-
-        const normalizedStart = normalizeDuration(startDuration);
-        const normalizedEnd = normalizeDuration(endDuration);
-
-        const startMs = Date.now() - (ms(normalizedStart) || 15 * 60 * 1000);
-        const endMs = Date.now() - (ms(normalizedEnd) || 0);
+        // Parse start and end times using the unified helper
+        const startMs = parseTimestamp(start || args.time_range || args.duration, Date.now() - 15 * 60 * 1000);
+        const endMs = parseTimestamp(end, Date.now());
 
         // Apply a safety clock skew offset (10 minutes) to keep queries in the server's past
         const skewOffsetMs = 10 * 60 * 1000;
@@ -132,9 +196,13 @@ export const get_logs = tool({
         const finalEndNs = String((endMs - skewOffsetMs) * 1000000);
 
         const finalLimit = (limit !== undefined && limit !== null) ? limit : 10;
-        console.log(`🤖 Agent executing Loki query: ${finalLogQL}`);
+        
         const queryBaseUrl = process.env.GRAFANA_LOKI_PUSH_URL!.replace('/push', '/query_range');
         const targetUrl = `${queryBaseUrl}?query=${encodeURIComponent(finalLogQL)}&limit=${finalLimit}&start=${finalStartNs}&end=${finalEndNs}`;
+
+        console.log(`[Tool: get_logs] LogQL query: ${finalLogQL}`);
+        console.log(`[Tool: get_logs] Query Window: ${new Date(startMs).toISOString()} to ${new Date(endMs).toISOString()}`);
+        console.log(`[Tool: get_logs] Target Request URL: ${targetUrl}`);
 
         try {
             const response = await fetch(targetUrl, {
@@ -145,8 +213,11 @@ export const get_logs = tool({
                 }
             });
 
+            console.log(`[Tool: get_logs] Loki API response status: ${response.status}`);
+
             if (!response.ok) {
                 const errorText = await response.text();
+                console.error(`[Tool: get_logs] Loki API Error:`, errorText);
                 return { error: `Grafana Loki Query Failed: ${response.status} - ${errorText}` };
             }
 
@@ -159,6 +230,7 @@ export const get_logs = tool({
                 })
             );
 
+            console.log(`[Tool: get_logs] Completed. Retrieved ${plainLines.length} lines.`);
             return {
                 status: "success",
                 linesFound: plainLines.length,
@@ -166,6 +238,7 @@ export const get_logs = tool({
             };
 
         } catch (error: any) {
+            console.error(`[Tool: get_logs] Fetch failed:`, error);
             return { error: `Network failure connecting to Grafana Loki: ${error.message}` };
         }
     }
