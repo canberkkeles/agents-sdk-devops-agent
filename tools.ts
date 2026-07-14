@@ -55,8 +55,9 @@ export const post_issue_comment = tool({
     }),
     execute: async ({ issue_id, comment_body }) => {
         console.log(`[Tool: post_issue_comment] Executing on issue [${issue_id}]`);
+        console.log(comment_body)
         console.log(`[Tool: post_issue_comment] Body snippet: "${comment_body.substring(0, 150)}..."`);
-        
+
         const apiKey = process.env.LINEAR_API_KEY?.trim();
         if (!apiKey) {
             console.error("[Tool: post_issue_comment] Error: LINEAR_API_KEY env is not configured.");
@@ -66,7 +67,7 @@ export const post_issue_comment = tool({
         try {
             const linear = new LinearClient({ apiKey });
             const agentHeader = `### 🤖 DevOps Agent\n*Automated response*\n\n`;
-            
+
             const payload = await linear.createComment({
                 issueId: issue_id,
                 body: agentHeader + comment_body
@@ -161,7 +162,7 @@ export const get_logs = tool({
     execute: async (args: any) => {
         const { service, filter, limit, start, end } = args;
         console.log("[Tool: get_logs] Executing with args:", args);
-        
+
         const username = process.env.GRAFANA_USER_ID!.trim();
         const tokenSecret = process.env.GRAFANA_API_KEY!.trim();
         const basicAuthString = Buffer.from(`${username}:${tokenSecret}`).toString('base64');
@@ -196,7 +197,7 @@ export const get_logs = tool({
         const finalEndNs = String((endMs - skewOffsetMs) * 1000000);
 
         const finalLimit = (limit !== undefined && limit !== null) ? limit : 10;
-        
+
         const queryBaseUrl = process.env.GRAFANA_LOKI_PUSH_URL!.replace('/push', '/query_range');
         const targetUrl = `${queryBaseUrl}?query=${encodeURIComponent(finalLogQL)}&limit=${finalLimit}&start=${finalStartNs}&end=${finalEndNs}`;
 

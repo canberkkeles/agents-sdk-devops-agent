@@ -8,8 +8,10 @@ description: Automatically investigate logs for incoming Linear issues represent
 Use this skill when you are triaging a Linear issue payload representing a production error, incident, or outage.
 
 ## Workflow:
-1. **Acknowledge the Ticket:** Immediately call the `post_issue_comment` tool with the incoming Linear `issue_id` to post an initial comment:
-   *"🤖 Antigravity DevOps Agent has started investigating this issue. Checking Grafana Loki logs..."*
+1. **Acknowledge the Ticket:** Immediately call the `post_issue_comment` tool:
+   - Map the Linear issue ID to the `issue_id` parameter.
+   - Map this exact markdown text to the `comment_body` parameter:
+     "🤖 Antigravity DevOps Agent has started investigating this issue. Checking Grafana Loki logs..."
 2. **Collect Evidence:**
    - Call the `list_services` tool to discover the active service names.
    - Use `get_logs` to retrieve the relevant logs for the target service and timeframe (defaulting to the past 3 hours if not specified).
