@@ -4,8 +4,13 @@ import dotenv from 'dotenv';
 import { get_logs, list_services, post_issue_comment } from './tools.js';
 import { SYSTEM_PROMPT } from './prompts.js';
 import { experimental_createSkillTool as createSkillTool } from 'bash-tool';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
-dotenv.config({ path: '.env.local' });
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+dotenv.config({ path: path.resolve(__dirname, '.env.local') });
 dotenv.config();
 
 // Export the core agent execution function. Stateless and webhook-friendly.
@@ -13,7 +18,7 @@ export async function runAgent(promptText: string): Promise<string> {
     console.log(`[Agent] Starting runAgent with prompt:\n${promptText}`);
 
     const { skill, files, instructions } = await createSkillTool({
-        skillsDirectory: './skills',
+        skillsDirectory: path.resolve(__dirname, './skills'),
     });
 
     console.log(`[Agent] Skills loaded successfully. System prompt size: ${instructions?.length || 0} chars.`);
