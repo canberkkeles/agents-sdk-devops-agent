@@ -1,8 +1,8 @@
 import { generateText, isStepCount } from 'ai';
 import { google } from "@ai-sdk/google";
 import dotenv from 'dotenv';
-import { get_logs, list_services, post_issue_comment } from './tools';
-import { SYSTEM_PROMPT } from './prompts';
+import { get_logs, list_services, post_issue_comment } from './tools.js';
+import { SYSTEM_PROMPT } from './prompts.js';
 import { experimental_createSkillTool as createSkillTool } from 'bash-tool';
 
 dotenv.config({ path: '.env.local' });
