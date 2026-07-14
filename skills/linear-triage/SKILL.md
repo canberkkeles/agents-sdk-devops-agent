@@ -11,13 +11,14 @@ Use this skill when you are triaging a Linear issue payload representing a produ
 1. **Acknowledge the Ticket:** Immediately call the `post_issue_comment` tool:
    - Map the Linear issue ID to the `issue_id` parameter.
    - Map this exact markdown text to the `comment_body` parameter:
-     "🤖 Antigravity DevOps Agent has started investigating this issue. Checking Grafana Loki logs..."
+     "🤖 DevOps Agent has started investigating this issue. Checking Grafana Loki logs..."
 2. **Collect Evidence:**
    - Call the `list_services` tool to discover the active service names.
    - Use `get_logs` to retrieve the relevant logs for the target service and timeframe (defaulting to the past 3 hours if not specified).
 3. **Analyze & Mitigate:**
    - Determine how long the problem has been occurring based on timestamps.
    - Group and count reoccurring log messages to avoid duplicates.
+   - Identify the likely root cause of the incident by analyzing the log patterns and sequence of events.
    - Formulate a clear, structured Mitigation Plan (Immediate Containment, Short-Term Fixes, Long-Term Upgrades).
 4. **Publish Diagnostics:** Call `post_issue_comment` to post the final comment on the Linear issue containing the report formatted exactly as specified below.
 
@@ -37,6 +38,11 @@ Your final comment posted back to the Linear issue must follow this exact markdo
   - First Occurrence: [ISO Timestamp]
   - Last Occurrence: [ISO Timestamp]
   - Sample Trace: `[Raw Error Message]`
+
+---
+
+## 🕵️ Root Cause Analysis
+- **Likely Root Cause:** [Explain the suspected or confirmed trigger of the incident based on the log patterns, sequence of events, and error messages.]
 
 ---
 
