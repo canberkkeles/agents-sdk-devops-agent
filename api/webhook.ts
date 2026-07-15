@@ -2,13 +2,17 @@ import crypto from 'node:crypto';
 import { runAgent } from '../index.js';
 import dotenv from 'dotenv';
 import path from 'path';
+import { fileURLToPath } from 'url';
 
-dotenv.config({ path: path.resolve(__dirname, '.env.local') });
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+dotenv.config({ path: path.resolve(__dirname, '../.env.local') });
 dotenv.config();
 
 function verifySignature(headerSignatureString: string | null, rawBody: string): boolean {
     const signingKey = process.env.LINEAR_WEBHOOK_SIGNING_KEY;
-    if (!headerSignatureString) {
+    if (!headerSignatureString || !signingKey) {
         return false;
     }
     try {
@@ -18,11 +22,11 @@ function verifySignature(headerSignatureString: string | null, rawBody: string):
             .update(rawBody)
             .digest();
 
-        if (headerSignature !== computedSignature) {
+        if (headerSignature.length !== computedSignature.length) {
             return false;
         }
 
-        return true;
+        return crypto.timingSafeEqual(computedSignature, headerSignature);
     } catch {
         return false;
     }
