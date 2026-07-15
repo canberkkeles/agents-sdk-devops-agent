@@ -50,7 +50,16 @@ export async function POST(request: Request) {
         const action = payload.action;
         const data = payload.data;
 
-        if (payload.type === 'Issue' && (action === 'create' || action === 'update')) {
+        // Prevent feedback loops:
+        // 1. Only run on 'create' or 'update' events.
+        // 2. For 'update' events, only run if the title or description actually changed.
+        //    Since the agent uses a Personal API Key, any actions it performs (like posting comments)
+        //    are authenticated as the key's owner (a human user) and trigger an 'update' webhook.
+        //    Checking 'updatedFrom' prevents comment additions from causing infinite loops.
+        const isDetailsUpdated = data.updatedFrom && ('description' in data.updatedFrom || 'title' in data.updatedFrom);
+        const shouldTrigger = action === 'create' || (action === 'update' && isDetailsUpdated);
+
+        if (payload.type === 'Issue' && shouldTrigger) {
             const issueId = data.id;
             const title = data.title || 'No Title';
             const description = data.description || 'No Description';
