@@ -1,16 +1,46 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
+import crypto from 'node:crypto';
 import { runAgent } from '../index.js';
+import dotenv from 'dotenv';
+import path from 'path';
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
-    console.log(`[Webhook] Incoming request - Method: ${req.method}, Path: ${req.url}`);
-    
-    if (req.method !== 'POST') {
-        console.warn(`[Webhook] Method ${req.method} not allowed`);
-        return res.status(405).json({ error: 'Method Not Allowed' });
+dotenv.config({ path: path.resolve(__dirname, '.env.local') });
+dotenv.config();
+
+function verifySignature(headerSignatureString: string | null, rawBody: string): boolean {
+    const signingKey = process.env.LINEAR_WEBHOOK_SIGNING_KEY;
+    if (!headerSignatureString) {
+        return false;
     }
+    try {
+        const headerSignature = Buffer.from(headerSignatureString, 'hex');
+        const computedSignature = crypto
+            .createHmac('sha256', signingKey)
+            .update(rawBody)
+            .digest();
+
+        if (headerSignature !== computedSignature) {
+            return false;
+        }
+
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+export async function POST(request: Request) {
+    console.log(`[Webhook] Incoming request - Method: ${request.method}, Path: ${request.url}`);
 
     try {
-        const payload = req.body;
+        const rawBody = await request.text();
+        const signatureHeader = request.headers.get('linear-signature');
+
+        if (!verifySignature(signatureHeader, rawBody)) {
+            console.warn(`[Webhook] Invalid signature. Header: ${signatureHeader}`);
+            return Response.json({ error: 'Unauthorized', message: 'Invalid signature' }, { status: 401 });
+        }
+
+        const payload = JSON.parse(rawBody);
         console.log("[Webhook] Received Payload Body:", JSON.stringify(payload, null, 2));
 
         const action = payload.action;
@@ -30,13 +60,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             Description: ${description}`;
 
             console.log(`🤖 Starting autonomous diagnostic run for Linear Issue [${issueId}]...`);
-            
+
             // Execute the agent autonomously
             const resolution = await runAgent(prompt);
 
             console.log(`✅ Run complete for Linear Issue [${issueId}]. Resolution:`, resolution);
 
-            return res.status(200).json({
+            return Response.json({
                 status: 'success',
                 message: 'Autonomous diagnostic run completed successfully',
                 issue: {
@@ -44,20 +74,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                     title
                 },
                 resolution
-            });
+            }, { status: 200 });
         }
 
         console.log(`[Webhook] Ignored event - Type: ${payload.type}, Action: ${action}`);
-        return res.status(200).json({
+        return Response.json({
             status: 'ignored',
             reason: 'Not a relevant Issue create or update action'
-        });
+        }, { status: 200 });
 
     } catch (error: any) {
         console.error("[Webhook] Processing failure:", error);
-        return res.status(500).json({
+        return Response.json({
             error: 'Internal Server Error',
             message: error.message
-        });
+        }, { status: 500 });
     }
 }

@@ -22,7 +22,7 @@ Use this skill when you are triaging a Linear issue payload representing a produ
    - Formulate a clear, structured Mitigation Plan (Immediate Containment, Short-Term Fixes, Long-Term Upgrades).
 4. **Publish Diagnostics:** Call `post_issue_comment` to post the final comment on the Linear issue containing the report formatted exactly as specified below.
 
-## Final Response Output Format:
+## Final Response Output Format If Log Data Was Found:
 Your final comment posted back to the Linear issue must follow this exact markdown structure:
 
 # INCIDENT DIAGNOSTIC & REMEDIATION REPORT
@@ -56,3 +56,7 @@ Your final comment posted back to the Linear issue must follow this exact markdo
 
 ### Phase 3: Long-Term Architectural Mitigation
 - Propose structural architectural improvements to prevent this entire class of failures in the future (e.g. implementing proxy/pooling layers, introducing message queues to decouple services, adding CDNs/caching, or configuring secondary replication).
+
+## Final Response Output Format If No Log Data Was Found:
+
+"🤖 DevOps Agent was unable to find any logs in this time window"
