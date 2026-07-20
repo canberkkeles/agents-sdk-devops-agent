@@ -1,51 +1,6 @@
 import { tool } from 'ai';
 import { z } from 'zod';
-import ms from 'ms';
 import { LinearClient } from '@linear/sdk';
-
-function normalizeDuration(timeStr: string): string {
-    const clean = timeStr.toLowerCase().trim();
-    const match = clean.match(/(?:past\s+)?(\d+)\s*(sec|min|hour|day)s?/);
-    if (match) {
-        const num = match[1];
-        const unit = match[2];
-        const unitMap: Record<string, string> = {
-            sec: 's',
-            min: 'm',
-            hour: 'h',
-            day: 'd'
-        };
-        return `${num}${unitMap[unit]}`;
-    }
-    return timeStr;
-}
-
-function parseTimestamp(val: string | undefined, defaultMs: number): number {
-    if (!val) return defaultMs;
-
-    const clean = val.trim();
-
-    // 1. Try to parse as relative duration (e.g. "past 2 hours", "15m", "3h")
-    try {
-        const normalized = normalizeDuration(clean);
-        const msVal = ms(normalized);
-        if (typeof msVal === 'number') {
-            return Date.now() - msVal;
-        }
-    } catch {
-        // Fall through
-    }
-
-    // 2. Check if it's a raw Unix timestamp (unix ms or ns)
-    if (/^\d+$/.test(clean)) {
-        const num = Number(clean);
-        return num > 1e12 ? Math.floor(num / 1000000) : num;
-    }
-
-    // 3. Parse as ISO-8601 string
-    const parsed = Date.parse(clean);
-    return isNaN(parsed) ? defaultMs : parsed;
-}
 
 export const post_issue_comment = tool({
     description: 'Post a comment on a Linear issue to update users or publish diagnostics.',
@@ -55,7 +10,7 @@ export const post_issue_comment = tool({
     }),
     execute: async ({ issue_id, comment_body }) => {
         console.log(`[Tool: post_issue_comment] Executing on issue [${issue_id}]`);
-        console.log(comment_body)
+        console.log(comment_body);
         console.log(`[Tool: post_issue_comment] Body snippet: "${comment_body.substring(0, 150)}..."`);
 
         const apiKey = process.env.LINEAR_API_KEY?.trim();
@@ -89,12 +44,9 @@ export const post_issue_comment = tool({
 
 export const list_services = tool({
     description: 'Retrieve the list of active services/applications in the production infrastructure.',
-    parameters: z.object({
-        start: z.string().optional().describe('The start time to query active services (e.g. "past 24 hours", "24h", "2d"). Defaults to "24h".'),
-        end: z.string().optional().describe('The end time to query active services. Defaults to "0m" (now).'),
-    }),
-    execute: async (args: any) => {
-        console.log(`[Tool: list_services] Executing with args:`, args);
+    parameters: z.object({}),
+    execute: async () => {
+        console.log(`[Tool: list_services] Executing list_services...`);
         const username = process.env.GRAFANA_USER_ID!.trim();
         const tokenSecret = process.env.GRAFANA_API_KEY!.trim();
         const basicAuthString = Buffer.from(`${username}:${tokenSecret}`).toString('base64');
@@ -102,14 +54,12 @@ export const list_services = tool({
         const label = 'service_name';
         let services: string[] = [];
 
-        // Parse start and end times using the unified helper
-        const startMs = parseTimestamp(args.start || args.time_range || args.duration, Date.now() - 24 * 60 * 60 * 1000);
-        const endMs = parseTimestamp(args.end, Date.now());
+        // Hardcoded past 24 hours query window
+        const endMs = Date.now();
+        const startMs = endMs - 24 * 60 * 60 * 1000;
 
-        // Apply a safety clock skew offset (10 minutes) to keep queries in the server's past
-        const skewOffsetMs = 10 * 60 * 1000;
-        const finalStartNs = String((startMs - skewOffsetMs) * 1000000);
-        const finalEndNs = String((endMs - skewOffsetMs) * 1000000);
+        const finalStartNs = String(startMs * 1000000);
+        const finalEndNs = String(endMs * 1000000);
 
         const queryBaseUrl = process.env.GRAFANA_LOKI_PUSH_URL!.replace('/push', `/label/${label}/values`);
         const targetUrl = `${queryBaseUrl}?start=${finalStartNs}&end=${finalEndNs}`;
@@ -153,26 +103,25 @@ export const list_services = tool({
 export const get_logs = tool({
     description: 'Query live application logs from Grafana Loki for a specific service.',
     parameters: z.object({
-        service: z.string().optional().describe('The name of the service to retrieve logs for, e.g. "vercel-storefront".'),
+        service: z.string().describe('The target service name to retrieve logs for, e.g. "vercel-storefront" or "billing-worker".'),
         filter: z.string().optional().describe('An optional text filter to search for inside the logs (case-sensitive), e.g. "error", "ConnectionTimeoutError", or "500".'),
         limit: z.number().max(20).default(10).describe('Limit the number of log lines returned to save context window space.'),
-        start: z.string().optional().describe('The start time. Can be ISO-8601 string, Unix timestamp, or a relative duration (e.g. "past 1 hour", "15m").'),
-        end: z.string().optional().describe('The end time. Can be ISO-8601 string, Unix timestamp, or a relative duration.'),
     }),
     execute: async (args: any) => {
-        const { service, filter, limit, start, end } = args;
+        const { service, filter, limit } = args;
         console.log("[Tool: get_logs] Executing with args:", args);
 
         const username = process.env.GRAFANA_USER_ID!.trim();
         const tokenSecret = process.env.GRAFANA_API_KEY!.trim();
         const basicAuthString = Buffer.from(`${username}:${tokenSecret}`).toString('base64');
 
-        // Construct LogQL query from service and filter parameters using service_name label
-        let finalLogQL = '';
-        const rawService = service || args.service_name || args.app_name || args.app || 'vercel-storefront';
-        if (rawService) {
-            finalLogQL = `{service_name="${rawService.trim()}"}`;
+        // Construct LogQL query from service parameter
+        const rawService = service || args.service_name || args.app_name || args.app;
+        if (!rawService) {
+            console.error("[Tool: get_logs] Error: 'service' argument is missing.");
+            return { error: "Missing required parameter 'service'. You must specify the service name (e.g. 'vercel-storefront' or 'billing-worker') to query logs for." };
         }
+        let finalLogQL = `{service_name="${rawService.trim()}"}`;
 
         // Apply text filter if provided
         if (filter) {
@@ -187,14 +136,12 @@ export const get_logs = tool({
                 .replace(/,service=/g, ',service_name=');
         }
 
-        // Parse start and end times using the unified helper
-        const startMs = parseTimestamp(start || args.time_range || args.duration, Date.now() - 15 * 60 * 1000);
-        const endMs = parseTimestamp(end, Date.now());
+        // Hardcoded past 24 hours query window
+        const endMs = Date.now();
+        const startMs = endMs - 24 * 60 * 60 * 1000;
 
-        // Apply a safety clock skew offset (10 minutes) to keep queries in the server's past
-        const skewOffsetMs = 10 * 60 * 1000;
-        const finalStartNs = String((startMs - skewOffsetMs) * 1000000);
-        const finalEndNs = String((endMs - skewOffsetMs) * 1000000);
+        const finalStartNs = String(startMs * 1000000);
+        const finalEndNs = String(endMs * 1000000);
 
         const finalLimit = (limit !== undefined && limit !== null) ? limit : 10;
 
