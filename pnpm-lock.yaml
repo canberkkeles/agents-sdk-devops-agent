@@ -11,9 +11,6 @@ importers:
       '@ai-sdk/amazon-bedrock':
         specifier: ^5.0.24
         version: 5.0.24(zod@4.4.3)
-      '@ai-sdk/google':
-        specifier: ^4.0.3
-        version: 4.0.3(zod@4.4.3)
       '@linear/sdk':
         specifier: ^87.0.0
         version: 87.0.0(graphql@17.0.1)
@@ -74,12 +71,6 @@ packages:
 
   '@ai-sdk/gateway@4.0.6':
     resolution: {integrity: sha512-8GjssUxXeTd8tst2fYXNOFbtNNZFv3sG7aq7wKnQYrU2eB3JFR7np6o4F3Snp/fy/rJZSeH28LvjSWq5wkdL8Q==}
-    engines: {node: '>=22'}
-    peerDependencies:
-      zod: ^3.25.76 || ^4.1.8
-
-  '@ai-sdk/google@4.0.3':
-    resolution: {integrity: sha512-mTTQt9/+/traTwrM4+J3Ewea1WgQBHJC+3EVa3dqdOfN1iyOC9P76CpGCZdUyVTASfVCpUTKrgCxHUTl9S7q/A==}
     engines: {node: '>=22'}
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
@@ -2247,12 +2238,6 @@ snapshots:
       '@ai-sdk/provider': 4.0.1
       '@ai-sdk/provider-utils': 5.0.2(zod@4.4.3)
       '@vercel/oidc': 3.2.0
-      zod: 4.4.3
-
-  '@ai-sdk/google@4.0.3(zod@4.4.3)':
-    dependencies:
-      '@ai-sdk/provider': 4.0.1
-      '@ai-sdk/provider-utils': 5.0.2(zod@4.4.3)
       zod: 4.4.3
 
   '@ai-sdk/openai@4.0.16(zod@4.4.3)':
