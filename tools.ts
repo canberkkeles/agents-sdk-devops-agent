@@ -101,9 +101,9 @@ export const list_services = tool({
 });
 
 export const get_logs = tool({
-    description: 'Query live application logs from Grafana Loki for a specific service.',
+    description: 'Query live application logs from Grafana Loki for a specific service. You MUST specify the target "service" parameter (e.g. "vercel-storefront" or "billing-worker"). Do NOT call this tool without the service parameter.',
     parameters: z.object({
-        service: z.string().describe('The target service name to retrieve logs for, e.g. "vercel-storefront" or "billing-worker".'),
+        service: z.string().describe('REQUIRED. The target service name to retrieve logs for, e.g. "vercel-storefront" or "billing-worker".'),
         filter: z.string().optional().describe('An optional text filter to search for inside the logs (case-sensitive), e.g. "error", "ConnectionTimeoutError", or "500".'),
         limit: z.number().max(20).default(10).describe('Limit the number of log lines returned to save context window space.'),
     }),

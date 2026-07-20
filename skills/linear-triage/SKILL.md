@@ -12,15 +12,17 @@ Use this skill when you are triaging a Linear issue payload representing a produ
    - Map the Linear issue ID to the `issue_id` parameter.
    - Map this exact markdown text to the `comment_body` parameter:
      "🤖 DevOps Agent has started investigating this issue. Checking Grafana Loki logs..."
-2. **Collect Evidence:**
-   - Call the `list_services` tool to discover the active service names.
-   - Use `get_logs` to retrieve the relevant logs for the target service and timeframe (defaulting to the past 3 hours if not specified).
-3. **Analyze & Mitigate:**
+2. **Discover Infrastructure Services:** Call the `list_services` tool first to list all active production services.
+3. **Retrieve Service Logs:**
+   - Extract the target service name from the Linear issue title/description (e.g. `vercel-storefront` or `billing-worker`).
+   - Call `get_logs` passing `{ service: "<service-name>" }` (e.g., `{ service: "vercel-storefront" }`).
+   - **CRITICAL:** Do NOT call `get_logs` with empty arguments or in parallel before identifying the service. Always specify the `service` argument.
+4. **Analyze & Mitigate:**
    - Determine how long the problem has been occurring based on timestamps.
    - Group and count reoccurring log messages to avoid duplicates.
    - Identify the likely root cause of the incident by analyzing the log patterns and sequence of events.
    - Formulate a clear, structured Mitigation Plan (Immediate Containment, Short-Term Fixes, Long-Term Upgrades).
-4. **Publish Diagnostics:** Call `post_issue_comment` to post the final comment on the Linear issue containing the report formatted exactly as specified below.
+5. **Publish Diagnostics:** Call `post_issue_comment` to post the final comment on the Linear issue containing the report formatted exactly as specified below.
 
 ## Final Response Output Format If Log Data Was Found:
 Your final comment posted back to the Linear issue must follow this exact markdown structure:
